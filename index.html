@@ -2,81 +2,62 @@
 - make axis values dynamic
 - allow for file upload instead of reading hardcoded file
 - make graph interactive
+- make graph widths same (normalize)
 -->
 <!DOCTYPE html>
 
 <head>
     <title>States Over Time</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #legend {
+            border: 3px solid #d3d3d3;
+            border-radius: 5px;
+        }
+
+        #legend-states p:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
 </head>
 
 <body>
-    <div id="container"></div>
+    <div class="d-flex align-items-center">
+        <div id="container" class="mb-5"></div>
+        <div id="legend" class="ml-5 hidden p-4">
+            <p><strong>Legend</strong></p>
+            <div id="legend-states">
+
+            </div>
+        </div>
+    </div>
+    <button id="toggle-scale" class="hidden">switch to log scale</button>
     <script type="module">
         import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
-        const width = 640;
+        const graphWidth = 540; 
+        const graphLeftOffset = 0; // offset from left border of svg
         const height = 500;
         const marginTop = 40;
-        const marginRight = 100;
         const marginBottom = 50;
-        const marginLeft = 100;
-        const scalex = 2;
-        const scaley = 10000;
+        const yAxisLeftOffset = 100 + graphLeftOffset; // offset from left border of graph
+        const svgWidth = graphWidth + graphLeftOffset;
 
-
-        // Declare the x (horizontal position) scale
-        let x = d3.scaleLinear()
-            .domain([0, 10]) //change 10 to max time
-            .range([marginLeft, width - marginRight]);
-
-        // Declare the y (vertical position) scale
-        const y = d3.scaleLinear()
-            .domain([0, 60000]) //change 60000 to max individuals
-            .range([height - marginBottom, marginTop]);
-
-        // Create the SVG container
-        const svg = d3.create("svg")
-            .attr("width", width)
-            .attr("height", height);
-
-        // Add the x-axis
-        svg.append("g")
-            .attr("transform", `translate(0, ${height - marginBottom})`)
-            .call(d3.axisBottom(x).ticks(5));
-
-        // Add x-axis label
-        svg.append("text")
-            .attr("text-anchor", "middle")
-            .style("font-size", "24px")
-            .attr("x", width / 2)
-            .attr("y", height)
-            .text("Time");
-
-        // Add the y-axis
-        svg.append("g")
-            .attr("transform", `translate(${marginLeft}, 0)`)
-            .call(d3.axisLeft(y).ticks(6));
-
-        // Add y-axis label
-        svg.append("text")
-            .attr("transform", "rotate(-90)")
-            .attr("text-anchor", "middle")
-            .style("font-size", "24px")
-            // x and y swapped and "0 - " added to account for rotation
-            .attr("y", marginLeft / 3)
-            .attr("x", 0 - height / 2)
-            .text("Individuals");
-
-        // Add title
-        svg.append("text")
-            .attr("x", (width / 2))
-            .attr("y", 0 + (marginTop))
-            .attr("text-anchor", "middle")
-            .style("font-size", "24px")
-            .text("States Over Time");
-
-        // Append the SVG element
-        container.append(svg.node());
+        let scale = "linear";
 
         let text = await d3.text("all_state_transitions.tsv");
         text = "id\tpre\tpost\ttime\n" + text;
@@ -84,12 +65,13 @@
 
         const states = {};
         const currVal = {};
+        let maxTime = parseFloat(tsv[tsv.length - 1]["time"]);
+        let maxIndividuals = 0;
         for (const o of tsv) {
             if (o["pre"] in states) {
                 currVal[o["pre"]] -= 1;
                 states[o["pre"]][o["time"]] = parseInt(currVal[o["pre"]]);
             }
-
             if (o["post"] in states) {
                 currVal[o["post"]] += 1;
                 states[o["post"]][o["time"]] = parseInt(currVal[o["post"]]);
@@ -101,21 +83,120 @@
             }
         }
 
-        const colors = ["#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db", "#fdcce5", "#8bd3c7"];
-
-        const stateNames = Object.keys(states);
-        for (let i = 0; i < stateNames.length; i++) {
-            const data = Object.entries(states[stateNames[i]]);
-            svg.append("path")
-                .datum(data)
-                .attr("fill", "none")
-                .attr("stroke", colors[i])
-                .attr("stroke-width", 1)
-                .attr("d", d3.line()
-                    .x(function (d) { return x(d[0]) })
-                    .y(function (d) { return y(d[1]) })
-                )
+        for (const stateDict of Object.values(states)) {
+            for (const time of Object.keys(stateDict)) {
+                if (stateDict[time] > maxIndividuals) {
+                    maxIndividuals = stateDict[time];
+                }
+            }
         }
+
+        document.getElementById("toggle-scale").addEventListener("click", () => {
+            document.getElementById("toggle-scale").innerHTML = "switch to " + scale + " scale";
+            scale = scale === "log" ? "linear" : "log";
+
+            renderGraph(scale);
+        })
+
+        function renderGraph(scale) {
+            // delete any existing graphs
+            document.getElementById("container").innerHTML = "";
+
+            // Declare the x (horizontal position) scale
+            let x = d3.scaleLinear()
+                .domain([0, maxTime]) //change 10 to max time
+                .range([yAxisLeftOffset, graphWidth]);
+
+            // Declare the y (vertical position) scale
+            let y;
+            if (scale === "linear") {
+                y = d3.scaleLinear()
+                    .domain([0, maxIndividuals]) //change 60000 to max individuals
+                    .range([height - marginBottom, marginTop]);
+            }
+            else {
+                y = d3.scaleLog([1, maxIndividuals], [height - marginBottom, marginTop]).nice();
+            }
+
+            // Create the SVG container
+            const svg = d3.create("svg")
+                .attr("width", svgWidth)
+                .attr("height", height);
+
+            // Add the x-axis
+            svg.append("g")
+                .attr("transform", `translate(0, ${height - marginBottom})`)
+                .call(d3.axisBottom(x));
+
+            // Add x-axis label
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .style("font-size", "24px")
+                .attr("x", ((graphLeftOffset + graphWidth) + (graphLeftOffset + yAxisLeftOffset)) / 2)
+                .attr("y", height)
+                .text("Time");
+
+            // Add the y-axis
+            svg.append("g")
+                .attr("transform", `translate(${yAxisLeftOffset}, 0)`)
+                .call(d3.axisLeft(y));
+
+            // Add y-axis label
+            svg.append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("text-anchor", "middle")
+                .style("font-size", "24px")
+                // x and y swapped and "0 - " added to account for rotation
+                .attr("y", yAxisLeftOffset / 3)
+                .attr("x", 0 - height / 2)
+                .text("Individuals");
+
+            // Add title
+            svg.append("text")
+                .attr("x", (svgWidth / 2))
+                .attr("y", 0 + (marginTop))
+                .attr("text-anchor", "middle")
+                .style("font-size", "24px")
+                .text("States Over Time");
+
+            // Append the SVG element
+            container.append(svg.node());
+            // container.append(legendHolder.node());
+
+            const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000'
+];
+            
+            const stateNames = Object.keys(states);
+            for (let i = 0; i < stateNames.length; i++) {
+                const data = Object.entries(states[stateNames[i]]);
+                svg.append("path")
+                    .datum(data)
+                    .attr("fill", "none")
+                    .attr("stroke", colors[i])
+                    .attr("stroke-width", 1)
+                    .attr("d", d3.line()
+                        .x(function (d) { return x(d[0]) })
+                        .y(function (d) { return y(d[1]) })
+                    )
+                const legendEntry = document.createElement("div");
+                legendEntry.classList.add("d-flex");
+                const listColor = document.createElement("p");
+                listColor.innerHTML = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+                listColor.style.backgroundColor = colors[i];
+                listColor.classList.add("d-flex");
+                listColor.classList.add("mr-3");
+                const listItem = document.createElement("p");
+                listItem.innerText = stateNames[i];
+                legendEntry.appendChild(listColor);
+                legendEntry.appendChild(listItem);
+                document.getElementById("legend-states").appendChild(legendEntry);
+
+            }
+        }
+
+        renderGraph(scale);
+        document.getElementById("toggle-scale").classList.remove("hidden");
+        document.getElementById("legend").classList.remove("hidden");
 
 
     </script>
