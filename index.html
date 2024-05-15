@@ -1,8 +1,7 @@
 <!-- TODO:
-- Try to make faster (switch and start)
 - make axis values dynamic
 - make graph interactive
-- make graph line widths same (normalize)
+- Add text to the file input
 -->
 <!DOCTYPE html>
 
@@ -25,13 +24,16 @@
         #legend {
             border: 3px solid #d3d3d3;
             border-radius: 5px;
+            /* TODO: dynamically fix this later */
+            width: 200px; 
         }
 
         #legend-states p:last-child {
             margin-bottom: 0;
         }
     </style>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
 </head>
 
 <body>
@@ -42,7 +44,7 @@
         <div id="container-log" class="mb-5"></div>
         <div id="container-linear" class="mb-5"></div>
         <div id="legend" class="ms-5 hidden p-4">
-            <p><strong>Legend</strong></p>
+            <p class="text-center"><strong>Legend</strong></p>
             <div id="legend-states">
 
             </div>
@@ -54,14 +56,14 @@
         import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
         // constants
-        const graphWidth = 540; 
+        const graphWidth = 540;
         const graphLeftOffset = 0; // offset from left border of svg
         const height = 500;
         const marginTop = 40;
         const marginBottom = 50;
         const yAxisLeftOffset = 100 + graphLeftOffset; // offset from left border of graph
         const svgWidth = graphWidth + graphLeftOffset;
-        const colors = ["rgb(0,0,143)","rgb(182,0,0)","rgb(0,140,0)","rgb(195,79,255)","rgb(1,165,202)","rgb(236,157,0)","rgb(118,255,0)","rgb(89,83,84)","rgb(255,117,152)","rgb(148,0,115)","rgb(0,243,204)","rgb(72,83,255)","rgb(166,161,154)","rgb(0,67,1)","rgb(237,183,255)","rgb(138,104,0)","rgb(97,0,163)","rgb(92,0,17)","rgb(255,245,133)","rgb(0,123,105)","rgb(146,184,83)","rgb(171,212,255)","rgb(126,121,163)","rgb(255,84,1)","rgb(10,87,125)","rgb(168,97,92)","rgb(231,0,185)","rgb(255,195,166)","rgb(91,53,0)","rgb(0,180,133)"];
+        const colors = ["rgb(0,0,143)", "rgb(182,0,0)", "rgb(0,140,0)", "rgb(195,79,255)", "rgb(1,165,202)", "rgb(236,157,0)", "rgb(118,255,0)", "rgb(89,83,84)", "rgb(255,117,152)", "rgb(148,0,115)", "rgb(0,243,204)", "rgb(72,83,255)", "rgb(166,161,154)", "rgb(0,67,1)", "rgb(237,183,255)", "rgb(138,104,0)", "rgb(97,0,163)", "rgb(92,0,17)", "rgb(255,245,133)", "rgb(0,123,105)", "rgb(146,184,83)", "rgb(171,212,255)", "rgb(126,121,163)", "rgb(255,84,1)", "rgb(10,87,125)", "rgb(168,97,92)", "rgb(231,0,185)", "rgb(255,195,166)", "rgb(91,53,0)", "rgb(0,180,133)"];
         const dataPoints = 1000;
 
         // modified by functions
@@ -72,7 +74,7 @@
 
         let scale = "linear";
 
-        // let text = await d3.text("all_state_transitions.tsv");
+        // File upload
         document.getElementById("file-upload").addEventListener("change", () => {
             const file = document.getElementById("file-upload").files[0];
             const fileReader = new FileReader();
@@ -91,7 +93,7 @@
             data = "id\tpre\tpost\ttime\n" + data;
             const tsv = d3.tsvParse(data);
             maxTime = parseFloat(tsv[tsv.length - 1]["time"])
-    
+
             for (const o of tsv) {
                 if (o["pre"] in states) {
                     currVal[o["pre"]] -= 1;
@@ -107,7 +109,8 @@
                     states[o["post"]][o["time"]] = parseInt(currVal[o["post"]]);
                 }
             }
-    
+
+            // Max y-axis
             for (const stateDict of Object.values(states)) {
                 for (const time of Object.keys(stateDict)) {
                     if (stateDict[time] > maxIndividuals) {
@@ -116,6 +119,7 @@
                 }
             }
 
+            // Data subset
             for (const stateDict of Object.values(states)) {
                 let prevTime = 0;
                 for (const time of Object.keys(stateDict)) {
@@ -126,9 +130,9 @@
                     }
                 }
             }
-    
+
             const stateNames = Object.keys(states);
-    
+
             // Legend
             for (let i = 0; i < stateNames.length; i++) {
                 const legendEntry = document.createElement("div");
@@ -137,23 +141,27 @@
                 listColor.innerHTML = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
                 listColor.style.backgroundColor = colors[i];
                 listColor.classList.add("d-flex");
-                listColor.classList.add("mr-3");
+                listColor.classList.add("me-3");
                 const listItem = document.createElement("p");
+                listItem.id = "legend-state-value-" + stateNames[i];
+                listItem.classList.add("legend-state-value")
                 listItem.innerText = stateNames[i];
                 legendEntry.appendChild(listColor);
                 legendEntry.appendChild(listItem);
                 document.getElementById("legend-states").appendChild(legendEntry);
             }
-            
+
+            // Rendering everything
             renderGraph("log", document.getElementById("container-log"));
             document.getElementById("container-log").classList.add("hidden");
 
             renderGraph("linear", document.getElementById("container-linear"));
-            
+
             document.getElementById("toggle-scale").classList.remove("hidden");
             document.getElementById("legend").classList.remove("hidden");
         }
 
+        // Toggle Scale button
         document.getElementById("toggle-scale").addEventListener("click", () => {
             document.getElementById("toggle-scale").innerHTML = "switch to " + scale + " scale";
             scale = scale === "log" ? "linear" : "log";
@@ -170,6 +178,7 @@
             console.log(Date.now())
         })
 
+        // Only called on file upload
         function renderGraph(scale, container) {
             // delete any existing graphs
             container.innerHTML = "";
@@ -225,7 +234,7 @@
 
             // Add title
             svg.append("text")
-                .attr("x", (svgWidth / 2))
+                .attr("x", ((graphLeftOffset + graphWidth) + (graphLeftOffset + yAxisLeftOffset)) / 2)
                 .attr("y", 0 + (marginTop))
                 .attr("text-anchor", "middle")
                 .style("font-size", "24px")
@@ -236,6 +245,7 @@
 
             const stateNames = Object.keys(states);
 
+            // Add graph lines
             for (let i = 0; i < stateNames.length; i++) {
                 const data = Object.entries(states[stateNames[i]]);
                 svg.append("path")
@@ -247,6 +257,68 @@
                         .x(function (d) { return x(d[0]) })
                         .y(function (d) { return y(d[1]) })
                     )
+            }
+
+            // Hover
+            const vbar = svg
+                .append('g')
+                .append('rect')
+                .style("fill", "black")
+                .attr("stroke", "black")
+                .attr('x', 0)
+                .attr('y', marginTop)
+                .attr('height', height - marginTop - marginBottom)
+                .attr('width', 1)
+                .style("opacity", 0)
+
+            // Hover Box
+            const hoverbox = svg
+                .append('g')
+                .append('rect')
+                .style("fill", "white")
+                .attr("stroke", "black")
+                .attr('x', 0)
+                .attr('y', 0) // whatever mouse is for each state
+                .attr('width', 100)
+                .attr('height', 200)
+                .style("opacity", 0)
+
+
+            // Graph area for hover
+            svg.append('rect')
+                .style("fill", "none")
+                .style("pointer-events", "all")
+                .attr('width', graphWidth - yAxisLeftOffset)
+                .attr('height', height - marginTop - marginBottom)
+                .attr('x', yAxisLeftOffset)
+                .attr('y', marginTop)
+                .on('mouseover', mouseover)
+                .on('mousemove', mousemove)
+                .on('mouseout', mouseout);
+
+            function mouseover() {
+                vbar.style("opacity", 1)
+                hoverbox.style("opacity", 1)
+            }
+
+            function mousemove(event) {
+                // recover coordinate we need
+                const coords = d3.pointer(event)
+                vbar.attr('x', coords[0]) // coords[0] is from [yAxisLeftOffset, graphWidth]
+                hoverbox.attr('x', coords[0])
+                hoverbox.attr('y', coords[1])
+                const xTime = (coords[0] - yAxisLeftOffset) / (graphWidth - yAxisLeftOffset) * maxTime;
+
+                for (let i = 0; i < stateNames.length; i++) {
+                    const data = Object.entries(states[stateNames[i]]);
+                    const index = d3.bisector((dataCoord) => dataCoord[0]).left(data, xTime)
+                    document.getElementById("legend-state-value-" + stateNames[i]).innerText = stateNames[i] + ": " + data[index][1];
+                }
+            }
+
+            function mouseout() {
+                vbar.style("opacity", 0)
+                hoverbox.style("opacity", 0)
             }
         }
     </script>
