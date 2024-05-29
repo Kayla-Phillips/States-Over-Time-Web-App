@@ -1,8 +1,3 @@
-<!-- TODO:
-- make axis values dynamic
-- make graph interactive
-- Add text to the file input
--->
 <!DOCTYPE html>
 
 <head>
@@ -25,11 +20,29 @@
             border: 3px solid #d3d3d3;
             border-radius: 5px;
             /* TODO: dynamically fix this later */
-            width: 200px; 
+            width: 175px;
         }
 
         #legend-states p:last-child {
             margin-bottom: 0;
+        }
+
+        #time-input {
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #time {
+            display: flex;
+        }
+
+        #time-input {
+            width: 100%;
+            height: 75%;
+        }
+
+        #time-enter {
+            width: 100%;
         }
     </style>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
@@ -40,20 +53,24 @@
     <div>
         <input class="form-control mb-4" id="file-upload" type="file" accept=".tsv">
     </div>
-    <div class="d-flex align-items-center">
+    <div id="graph-and-legend" class="d-flex align-items-center">
         <div id="container-log" class="mb-5"></div>
         <div id="container-linear" class="mb-5"></div>
         <div id="legend" class="ms-5 hidden p-4">
             <p class="text-center"><strong>Legend</strong></p>
-            <div id="legend-states">
-
+            <div id="legend-states"></div>
+            <div id="time">
+                <p>Time:&nbsp;</p>
+                <input type="number" id="time-input" min="0">
             </div>
+            <button id="time-enter">Enter</button>
         </div>
     </div>
     <button class="hidden" id="toggle-scale">switch to log scale</button>
     <p id="status-message" class="hidden"></p>
     <script type="module">
         import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+        // Bootstrap for js?
 
         // constants
         const graphWidth = 540;
@@ -71,8 +88,12 @@
         const currVal = {};
         let maxTime;
         let maxIndividuals = 0;
+        let barFixed = false;
+        let svgs = {};
+        let vbars = {};
 
         let scale = "linear";
+        document.getElementById("time-input").setAttribute("max", maxTime);
 
         // File upload
         document.getElementById("file-upload").addEventListener("change", () => {
@@ -87,6 +108,11 @@
             fileReader.readAsText(file, "UTF-8");
             document.getElementById("status-message").innerHTML = "Loading...";
             document.getElementById("status-message").classList.remove("hidden");
+        })
+
+        document.getElementById("file-upload").addEventListener("click", () => {
+            // unfocus file input
+            document.getElementById("file-upload").blur();
         })
 
         function parseData(data) {
@@ -164,24 +190,23 @@
         // Toggle Scale button
         document.getElementById("toggle-scale").addEventListener("click", () => {
             document.getElementById("toggle-scale").innerHTML = "switch to " + scale + " scale";
-            scale = scale === "log" ? "linear" : "log";
-            console.log(Date.now());
-
             if (scale === "log") {
-                document.getElementById("container-linear").classList.add("hidden");
-                document.getElementById("container-log").classList.remove("hidden");
-            }
-            else {
-                document.getElementById("container-log").classList.add("hidden");
+                scale = "linear";
                 document.getElementById("container-linear").classList.remove("hidden");
+                document.getElementById("container-log").classList.add("hidden");
+            } else{
+                scale = "log";
+                document.getElementById("container-log").classList.remove("hidden");
+                document.getElementById("container-linear").classList.add("hidden");
             }
-            console.log(Date.now())
+            saveTime();
         })
 
         // Only called on file upload
-        function renderGraph(scale, container) {
+        function renderGraph(graphScale, container) {
             // delete any existing graphs
             container.innerHTML = "";
+            // hide title from file upload
 
             // Declare the x (horizontal position) scale
             let x = d3.scaleLinear()
@@ -190,7 +215,7 @@
 
             // Declare the y (vertical position) scale
             let y;
-            if (scale === "linear") {
+            if (graphScale === "linear") {
                 y = d3.scaleLinear()
                     .domain([0, maxIndividuals]) //change 60000 to max individuals
                     .range([height - marginBottom, marginTop]);
@@ -265,24 +290,10 @@
                 .append('rect')
                 .style("fill", "black")
                 .attr("stroke", "black")
-                .attr('x', 0)
+                .attr('x', yAxisLeftOffset)
                 .attr('y', marginTop)
                 .attr('height', height - marginTop - marginBottom)
-                .attr('width', 1)
-                .style("opacity", 0)
-
-            // Hover Box
-            const hoverbox = svg
-                .append('g')
-                .append('rect')
-                .style("fill", "white")
-                .attr("stroke", "black")
-                .attr('x', 0)
-                .attr('y', 0) // whatever mouse is for each state
-                .attr('width', 100)
-                .attr('height', 200)
-                .style("opacity", 0)
-
+                .attr('width', 0.5)
 
             // Graph area for hover
             svg.append('rect')
@@ -292,33 +303,69 @@
                 .attr('height', height - marginTop - marginBottom)
                 .attr('x', yAxisLeftOffset)
                 .attr('y', marginTop)
-                .on('mouseover', mouseover)
+                // .on('mouseover', mouseover)
                 .on('mousemove', mousemove)
-                .on('mouseout', mouseout);
-
-            function mouseover() {
-                vbar.style("opacity", 1)
-                hoverbox.style("opacity", 1)
-            }
+                // .on('mouseout', mouseout)
+                .on('click', function (event) {
+                    barFixed = !barFixed;
+                });
 
             function mousemove(event) {
-                // recover coordinate we need
-                const coords = d3.pointer(event)
-                vbar.attr('x', coords[0]) // coords[0] is from [yAxisLeftOffset, graphWidth]
-                hoverbox.attr('x', coords[0])
-                hoverbox.attr('y', coords[1])
-                const xTime = (coords[0] - yAxisLeftOffset) / (graphWidth - yAxisLeftOffset) * maxTime;
+                // recover coordinates
+                const coords = d3.pointer(event);
+                if (!barFixed) {
+                    vbar.attr('x', coords[0]); // coords[0] is from [yAxisLeftOffset, graphWidth]
+                    const xTime = (coords[0] - yAxisLeftOffset) / (graphWidth - yAxisLeftOffset) * maxTime;
 
-                for (let i = 0; i < stateNames.length; i++) {
-                    const data = Object.entries(states[stateNames[i]]);
-                    const index = d3.bisector((dataCoord) => dataCoord[0]).left(data, xTime)
-                    document.getElementById("legend-state-value-" + stateNames[i]).innerText = stateNames[i] + ": " + data[index][1];
+                    if (xTime < 0) {
+                        return;
+                    }
+
+                    updateLegend(xTime);
+
+                    document.getElementById("time-input").value = xTime.toFixed(2);
                 }
             }
 
-            function mouseout() {
-                vbar.style("opacity", 0)
-                hoverbox.style("opacity", 0)
+            svgs[graphScale] = svg;
+            vbars[graphScale] = vbar;
+
+        }
+
+        function updateLegend(xTime) {
+            const stateNames = Object.keys(states);
+            for (let i = 0; i < stateNames.length; i++) {
+                const data = Object.entries(states[stateNames[i]]);
+                let index = d3.bisector((dataCoord) => dataCoord[0]).left(data, xTime);
+
+                if (index >= data.length) {
+                    index = data.length - 1;
+                }
+
+                if (index < 0) {
+                    index = 0;
+                }
+
+                document.getElementById("legend-state-value-" + stateNames[i]).innerText = stateNames[i] + ": " + data[index][1];
+            }
+        }
+
+
+        document.getElementById("time-enter").addEventListener("click", saveTime);
+        document.getElementById("time-input").addEventListener("blur", saveTime);
+        document.getElementById("time-input").addEventListener("keypress", handleKeyPress);
+
+        function saveTime() {
+            barFixed = true;
+            const timeInput = parseFloat(document.getElementById("time-input").value).toFixed(2);
+            const xCoord = (timeInput * (graphWidth - yAxisLeftOffset) / maxTime) + yAxisLeftOffset;
+            vbars[scale].attr('x', xCoord);
+            updateLegend(timeInput);
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                saveTime();
             }
         }
     </script>
