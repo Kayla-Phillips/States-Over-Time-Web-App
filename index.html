@@ -242,7 +242,6 @@
                 document.getElementById("container-log").classList.remove("hidden");
                 document.getElementById("container-linear").classList.add("hidden");
             }
-            saveTime();
         })
 
         // Only called on file upload
@@ -350,6 +349,7 @@
                 .on('mousemove', mousemove)
                 // .on('mouseout', mouseout)
                 .on('click', function (event) {
+                    console.log("click");
                     barFixed = !barFixed;
                 });
 
